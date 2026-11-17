@@ -1,0 +1,27 @@
+# Central config. Every script reads its settings from here so runs are reproducible.
+
+seed: 42
+
+data:
+  raw_exploratory: data/raw/upworthy-archive-exploratory-packages-03.12.2020.csv
+  # The confirmatory file stays untouched until the final evaluation run.
+  raw_confirmatory: data/raw/upworthy-archive-confirmatory-packages-03.12.2020.csv
+  processed_dir: data/processed
+
+filtering:
+  # Tests flagged by the archive authors as having likely broken randomisation
+  # (25 Jun 2013 to 10 Jan 2014, column `problem` = 1). We drop them.
+  drop_problem_tests: true
+  # Keep only tests where every package used the same image, so any CTR
+  # difference comes from the headline text.
+  same_image_only: true
+  # Packages with fewer impressions than this are too noisy to compare.
+  min_impressions: 1000
+  # Two-proportion z-test threshold for calling one headline the winner.
+  alpha: 0.05
+
+split:
+  # Split by test ID so no story appears in more than one split.
+  train: 0.7
+  val: 0.15
+  test: 0.15
