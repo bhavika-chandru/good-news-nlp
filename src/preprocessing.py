@@ -81,7 +81,9 @@ def clean_packages(df: pd.DataFrame, min_impressions: int = 1000,
         out["lede"] = out["lede"].map(strip_html)
     out = out[out["impressions"] >= min_impressions]
     out = out[out["clicks"] <= out["impressions"]]
-    out = (out.sort_values("impressions", ascending=False)
+    # Stable sort with a tie-break so the result is identical on every machine.
+    out = (out.sort_values(["clickability_test_id", "impressions", "headline"],
+                           ascending=[True, False, True], kind="mergesort")
               .drop_duplicates(["clickability_test_id", "headline"]))
     out["ctr"] = out["clicks"] / out["impressions"]
     return out.reset_index(drop=True)
@@ -120,8 +122,9 @@ def build_pairs(df: pd.DataFrame, alpha: float = 0.05) -> pd.DataFrame:
     rows = []
     # `excerpt` is mostly a site-wide tagline, so only `lede` is kept as story text.
     text_cols = [c for c in ("lede",) if c in df.columns]
-    for test_id, group in df.groupby("clickability_test_id"):
-        records = group.to_dict("records")
+    for test_id, group in df.groupby("clickability_test_id", sort=True):
+        # Fixed order inside each test, so the random a/b swap is reproducible.
+        records = group.sort_values("headline", kind="mergesort").to_dict("records")
         for a, b in combinations(records, 2):
             if rng.random() < 0.5:
                 a, b = b, a
@@ -143,19 +146,62 @@ def build_pairs(df: pd.DataFrame, alpha: float = 0.05) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def story_groups(pairs: pd.DataFrame) -> dict:
+    """Map each test to a story group.
+
+    Upworthy sometimes re-tested the same story in a new test. Tests that
+    share any headline or the same story text (`lede`) are linked, and each
+    connected set of tests counts as one story (union-find).
+    """
+    parent: dict = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        parent[find(x)] = find(y)
+
+    for test_id in pairs["test_id"].unique():
+        find(("test", test_id))
+    for _, row in pairs.iterrows():
+        node = ("test", row["test_id"])
+        union(node, ("headline", row["headline_a"].lower()))
+        union(node, ("headline", row["headline_b"].lower()))
+        lede = row.get("lede")
+        if isinstance(lede, str) and len(lede) > 30:
+            union(node, ("lede", lede.lower()))
+    # Name each group by its smallest test ID, which does not depend on the
+    # order in which links were made.
+    root_of = {t: find(("test", t)) for t in pairs["test_id"].unique()}
+    name: dict = {}
+    for t, root in root_of.items():
+        name[root] = min(name.get(root, t), t)
+    return {t: name[root] for t, root in root_of.items()}
+
+
 def split_by_test(pairs: pd.DataFrame, train: float = 0.7, val: float = 0.15,
                   seed: int = 42) -> pd.DataFrame:
-    """Assign each test (not each pair) to train/val/test, so stories never leak."""
-    tests = np.array(sorted(pairs["test_id"].unique()), dtype=object)
+    """Assign each story group (not each pair or test) to train/val/test.
+
+    Splitting by story means no headline or story text appears in more than
+    one split, so validation and test scores are not inflated by memorisation.
+    """
+    groups = story_groups(pairs)
+    keys = sorted(set(groups.values()))
     rng = np.random.default_rng(seed)
-    tests = tests[rng.permutation(len(tests))]
-    n_train = int(len(tests) * train)
-    n_val = int(len(tests) * val)
-    split = {t: "train" for t in tests[:n_train]}
-    split.update({t: "val" for t in tests[n_train:n_train + n_val]})
-    split.update({t: "test" for t in tests[n_train + n_val:]})
+    keys = [keys[i] for i in rng.permutation(len(keys))]
+    n_train = int(len(keys) * train)
+    n_val = int(len(keys) * val)
+    split = {k: "train" for k in keys[:n_train]}
+    split.update({k: "val" for k in keys[n_train:n_train + n_val]})
+    split.update({k: "test" for k in keys[n_train + n_val:]})
     out = pairs.copy()
-    out["split"] = out["test_id"].map(split)
+    out["story_group"] = out["test_id"].map(groups)
+    out["split"] = out["test_id"].map(lambda t: split[groups[t]])
     return out
 
 

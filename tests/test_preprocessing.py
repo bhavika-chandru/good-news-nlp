@@ -51,7 +51,45 @@ def test_pairs_label_points_to_higher_ctr(packages):
 
 
 def test_split_keeps_tests_together():
-    pairs = pd.DataFrame({"test_id": [f"t{i // 3}" for i in range(60)]})
+    pairs = pd.DataFrame({
+        "test_id": [f"t{i // 3}" for i in range(60)],
+        "headline_a": [f"a{i}" for i in range(60)],
+        "headline_b": [f"b{i}" for i in range(60)],
+    })
     split = split_by_test(pairs, seed=1)
     assert (split.groupby("test_id")["split"].nunique() == 1).all()
     assert set(split["split"]) == {"train", "val", "test"}
+
+
+def test_split_keeps_retested_stories_together():
+    """Two tests sharing a headline (a re-tested story) must land in the same split."""
+    pairs = pd.DataFrame({
+        "test_id": [f"t{i}" for i in range(40)],
+        "headline_a": ["Shared headline"] * 2 + [f"a{i}" for i in range(38)],
+        "headline_b": [f"b{i}" for i in range(40)],
+    })
+    split = split_by_test(pairs, seed=3)
+    assert split.loc[split["test_id"] == "t0", "split"].item() == \
+        split.loc[split["test_id"] == "t1", "split"].item()
+
+
+def test_split_does_not_depend_on_row_order(packages):
+    """Shuffling the input rows must give exactly the same pairs and split."""
+    extra = pd.DataFrame({
+        "clickability_test_id": [f"x{i // 2}" for i in range(40)],
+        "headline": [f"h{i}" for i in range(40)],
+        "impressions": [4000] * 40,
+        "clicks": [40 + (i % 2) * 40 for i in range(40)],
+        "eyecatcher_id": [f"e{i // 2}" for i in range(40)],
+        "problem": [0] * 40,
+    })
+    data = pd.concat([packages, extra], ignore_index=True)
+
+    def run(df):
+        pairs = build_pairs(keep_same_image_tests(clean_packages(df)))
+        out = split_by_test(pairs, seed=5)
+        return out.sort_values(["test_id", "headline_a"])[
+            ["test_id", "headline_a", "headline_b", "label", "split"]
+        ].reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(run(data), run(data.sample(frac=1, random_state=11)))
