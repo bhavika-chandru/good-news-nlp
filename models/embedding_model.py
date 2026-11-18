@@ -67,3 +67,13 @@ if __name__ == "__main__":
         if acc > best_acc:
             best_C, best_acc = C, acc
     print(f"\nBest: C = {best_C}, validation accuracy = {best_acc:.3f}")
+
+    # Save the best model's validation predictions for significance tests.
+    model = LogisticRegression(C=best_C, fit_intercept=False, max_iter=5000, random_state=42)
+    model.fit(X_train, y_train)
+    out = val[["test_id", "story_group", "headline_a", "headline_b", "label"]].copy()
+    out["prob_a_wins"] = model.predict_proba(X_val)[:, 1]
+    out["prediction"] = (out["prob_a_wins"] > 0.5).astype(int)
+    out["correct"] = out["prediction"] == out["label"]
+    out.to_csv("data/processed/embedding_val_predictions.csv", index=False)
+    print("Saved data/processed/embedding_val_predictions.csv")
