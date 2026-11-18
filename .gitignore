@@ -7,3 +7,4 @@ data/processed/*.csv
 outputs/
 *.pt
 *.safetensors
+.pytest_cache/
