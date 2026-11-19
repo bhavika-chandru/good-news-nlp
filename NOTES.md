@@ -24,4 +24,26 @@
 - Bug: transformers 5 loaded DeBERTa in float16 by default, giving NaN loss and constant predictions. Fixed by loading with dtype=torch.float32.
 
 ## To do
-- DeBERTa: 3 seeds, try lr 1e-5 with 3 epochs, significance test against Model A.
+- 5-fold cross-validation (by story) for all models; DeBERTa on Kaggle.
+
+## DeBERTa multi-seed (6 runs, 3 epochs each, best epoch kept)
+
+| Learning rate | Seed 42 | Seed 43 | Seed 44 | Mean ± std |
+|---|---|---|---|---|
+| 2e-5 | 0.755 (ep 3) | 0.744 (ep 2) | 0.742 (ep 2) | 0.747 ± 0.007 |
+| 1e-5 | 0.756 (ep 3) | 0.755 (ep 3) | 0.741 (ep 3) | 0.751 ± 0.008 |
+
+- Chose lr 1e-5: same accuracy as 2e-5 but overfits less (train loss 0.26 to 0.31 at epoch 3, against 0.06 to 0.11), and the best epoch is always the last.
+- The first single run (0.736) was at the low end, which is why multiple seeds were needed.
+
+## Significance: DeBERTa (lr 1e-5) vs Model A (0.713)
+
+| Seed | Accuracy | Gap | McNemar p | Bootstrap 95% CI (by story) |
+|---|---|---|---|---|
+| 42 | 0.756 | +4.3 | 0.036 | [-1.2, +9.5] |
+| 43 | 0.755 | +4.2 | 0.036 | [-1.1, +9.2] |
+| 44 | 0.741 | +2.8 | 0.187 | [-2.5, +8.1] |
+
+- McNemar assumes pairs are independent, but pairs from the same story are correlated. The story-level bootstrap accounts for this, and its CI includes zero for every seed.
+- Conclusion: DeBERTa is consistently 3 to 4 points better, but validation has too few stories to show this is significant.
+- Plan: 5-fold cross-validation by story over train+val (3,860 pairs) with a fixed number of epochs, to get enough data for the comparison and remove best-epoch selection.
