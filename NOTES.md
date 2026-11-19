@@ -23,8 +23,20 @@
 - Model B, DeBERTa-v3-base cross-encoder, swap augmentation, symmetric prediction: val accuracy 0.736 at epoch 2, overfits afterwards (train loss 0.02 by epoch 4). Single seed, so the gap over Model A (2.3 points) is not yet shown to be significant.
 - Bug: transformers 5 loaded DeBERTa in float16 by default, giving NaN loss and constant predictions. Fixed by loading with dtype=torch.float32.
 
+## 5-fold cross-validation by story (train+val, 3,860 pairs, 1,000 stories)
+
+| Model | CV accuracy |
+|---|---|
+| Negativity rule | 0.531 |
+| TF-IDF + LR | 0.641 |
+| Embeddings + LR (Model A) | 0.699 |
+| DeBERTa cross-encoder (Model B), lr 1e-5, 3 epochs, last epoch | 0.752 |
+
+- DeBERTa vs Model A: +5.2 points, story-level bootstrap 95% CI [+3.2, +7.3], McNemar p < 0.0001 (597 vs 395 disagreements). Significant.
+- Ran on Kaggle (first attempt failed because Internet was off and the model could not download).
+
 ## To do
-- 5-fold cross-validation (by story) for all models; DeBERTa on Kaggle.
+- Model C: small LLM, zero-shot then LoRA.
 
 ## DeBERTa multi-seed (6 runs, 3 epochs each, best epoch kept)
 
